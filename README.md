@@ -25,12 +25,14 @@ Tested on a Ryzen 9 5950X / 128GB / RTX 3090, but works on any Windows 11 machin
 | **misc** | Dark mode, clipboard history, background apps off, lock screen off, auto maintenance off |
 | **tasks** | Disables telemetry/CEIP/feedback/diagnostic scheduled tasks |
 | **wsl** | WSL2 memory/CPU tuning, sparse VHD, auto memory reclaim |
+| **tools** | Installs power tools via winget: Everything, Windhawk, QuickLook, ShareX, EarTrumpet, Flow Launcher, HWiNFO, TranslucentTB, UniGetUI, AutoHotkey, Starship |
+| **terminal** | Starship prompt config, JetBrains Mono Nerd Font, PSReadLine enhancements, Windows Terminal acrylic + font, TranslucentTB config, left-aligned taskbar |
 
 ## Quick start
 
 ```powershell
 # Download and run (admin recommended)
-irm https://raw.githubusercontent.com/withseismic/windows-perf/main/windows-perf.ps1 -OutFile windows-perf.ps1
+irm https://raw.githubusercontent.com/dougwithseismic/windows-perf/main/windows-perf.ps1 -OutFile windows-perf.ps1
 Set-ExecutionPolicy Bypass -Scope Process -Force
 .\windows-perf.ps1
 ```

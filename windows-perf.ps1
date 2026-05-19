@@ -214,6 +214,8 @@ function Show-Help {
     misc        Dark mode, clipboard, background apps, lock screen, maintenance
     tasks       Disable telemetry/CEIP/diagnostic scheduled tasks
     wsl         WSL2 memory, CPU, swap, sparse VHD optimization
+    tools       Install power tools (Everything, Windhawk, ShareX, etc.)
+    terminal    Starship prompt, Nerd Font, shell config, TranslucentTB
 
   FLAGS:
     -All            Run everything without prompts
@@ -1098,6 +1100,255 @@ function Invoke-OneDriveRemoval {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# MODULE: POWER TOOLS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+function Invoke-ToolsInstall {
+    Write-Host "`n━━━ Power Tools ━━━" -ForegroundColor Magenta
+    if (-not (Confirm-Action "Install recommended power tools? (Everything, Windhawk, QuickLook, ShareX, etc.)")) { return }
+
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        Write-Log "winget not found - cannot install tools" "FAIL"
+        $Script:TweaksFailed++
+        return
+    }
+
+    $tools = @(
+        @{Id="voidtools.Everything";           Desc="Instant file search (replaces Windows Search)"},
+        @{Id="RamenSoftware.Windhawk";         Desc="Runtime Windows mods and fixes"},
+        @{Id="QL-Win.QuickLook";               Desc="Spacebar file preview (like macOS)"},
+        @{Id="ShareX.ShareX";                  Desc="Screenshot and screen recording"},
+        @{Id="File-New-Project.EarTrumpet";    Desc="Per-app volume control"},
+        @{Id="Flow-Launcher.Flow-Launcher";    Desc="Alt+Space launcher (like Spotlight)"},
+        @{Id="REALiX.HWiNFO";                 Desc="Hardware monitoring"},
+        @{Id="CharlesMilette.TranslucentTB";   Desc="Transparent/acrylic taskbar"},
+        @{Id="Devolutions.UniGetUI";           Desc="GUI package manager for winget/scoop"},
+        @{Id="AutoHotkey.AutoHotkey";          Desc="Custom hotkeys and automation"},
+        @{Id="Starship.Starship";              Desc="Cross-shell prompt with git/node info"}
+    )
+
+    $installed = 0
+    foreach ($tool in $tools) {
+        $existing = winget list --id $tool.Id --source winget 2>$null | Select-String $tool.Id
+        if ($existing) {
+            Write-Log "$($tool.Id) already installed" "SKIP"
+            continue
+        }
+        if ($DryRun) {
+            Write-Log "(DRY RUN) Would install $($tool.Id) - $($tool.Desc)" "INFO"
+            continue
+        }
+        Write-Log "Installing $($tool.Id)..." "INFO"
+        $result = winget install --id $tool.Id --accept-package-agreements --accept-source-agreements --silent 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "Installed $($tool.Id) - $($tool.Desc)"
+            $installed++
+        } else {
+            Write-Log "Failed to install $($tool.Id)" "FAIL"
+            $Script:TweaksFailed++
+        }
+    }
+
+    # Install JetBrains Mono Nerd Font via scoop (if scoop available)
+    $scoop = Get-Command scoop -ErrorAction SilentlyContinue
+    if ($scoop -and -not $DryRun) {
+        scoop bucket add nerd-fonts 2>$null | Out-Null
+        $fontInstalled = scoop list JetBrainsMono-NF 2>$null | Select-String "JetBrainsMono"
+        if (-not $fontInstalled) {
+            scoop install nerd-fonts/JetBrainsMono-NF 2>$null | Out-Null
+            Write-Log "JetBrains Mono Nerd Font installed"
+        } else {
+            Write-Log "JetBrains Mono Nerd Font already installed" "SKIP"
+        }
+    } elseif ($scoop) {
+        Write-Log "(DRY RUN) Would install JetBrains Mono Nerd Font via scoop" "INFO"
+    } else {
+        Write-Log "scoop not found - install JetBrains Mono Nerd Font manually" "INFO"
+    }
+
+    Write-Log "Installed $installed tools"
+    $Script:TweaksApplied++
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MODULE: TERMINAL & SHELL
+# ═══════════════════════════════════════════════════════════════════════════════
+
+function Invoke-TerminalOptimization {
+    Write-Host "`n━━━ Terminal & Shell ━━━" -ForegroundColor Magenta
+    if (-not (Confirm-Action "Configure terminal with Starship prompt, Nerd Font, and shell enhancements?")) { return }
+
+    # Starship config
+    $starship = Get-Command starship -ErrorAction SilentlyContinue
+    if (-not $starship) {
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        $starship = Get-Command starship -ErrorAction SilentlyContinue
+    }
+
+    if ($starship) {
+        $configDir = "$env:USERPROFILE\.config"
+        if (-not (Test-Path $configDir)) { New-Item -ItemType Directory -Path $configDir -Force | Out-Null }
+        $configPath = "$configDir\starship.toml"
+        if (-not (Test-Path $configPath) -and -not $DryRun) {
+            @'
+format = """$directory$git_branch$git_status$nodejs$rust$python$golang$docker_context$cmd_duration$line_break$character"""
+
+[character]
+success_symbol = "[>](bold green)"
+error_symbol = "[>](bold red)"
+
+[directory]
+truncation_length = 3
+truncate_to_repo = true
+style = "bold cyan"
+
+[git_branch]
+format = "[$symbol$branch]($style) "
+symbol = " "
+style = "bold purple"
+
+[git_status]
+format = '([$all_status$ahead_behind]($style) )'
+style = "bold red"
+
+[nodejs]
+format = "[$symbol($version)]($style) "
+symbol = " "
+detect_files = ["package.json", ".node-version"]
+
+[rust]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[python]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[golang]
+format = "[$symbol($version)]($style) "
+symbol = " "
+
+[docker_context]
+format = "[$symbol$context]($style) "
+symbol = " "
+
+[cmd_duration]
+min_time = 2_000
+format = "[$duration]($style) "
+style = "bold yellow"
+'@ | Out-File -FilePath $configPath -Encoding UTF8
+            Write-Log "Starship config created at $configPath"
+        } elseif (Test-Path $configPath) {
+            Write-Log "Starship config already exists" "SKIP"
+        }
+
+        # Add Starship to PowerShell profile
+        $profilePath = "$env:USERPROFILE\Documents\PowerShell\Microsoft.PowerShell_profile.ps1"
+        if (Test-Path $profilePath) {
+            $profileContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
+            if ($profileContent -notmatch "starship init") {
+                if (-not $DryRun) {
+                    $additions = @'
+
+# Starship prompt
+Invoke-Expression (&starship init powershell)
+
+# Aliases
+Set-Alias -Name g -Value git
+Set-Alias -Name ll -Value Get-ChildItem
+Set-Alias -Name which -Value Get-Command
+function mkcd { param($dir) New-Item -ItemType Directory -Path $dir -Force | Out-Null; Set-Location $dir }
+function .. { Set-Location .. }
+function ... { Set-Location ..\.. }
+
+# PSReadLine enhancements
+if (Get-Module -ListAvailable PSReadLine) {
+    Set-PSReadLineOption -PredictionSource History
+    Set-PSReadLineOption -PredictionViewStyle ListView
+    Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
+    Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward
+    Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
+}
+'@
+                    Add-Content -Path $profilePath -Value $additions
+                }
+                Write-Log "PowerShell profile enhanced (Starship, aliases, PSReadLine)"
+            } else {
+                Write-Log "Starship already in profile" "SKIP"
+            }
+        }
+    } else {
+        Write-Log "Starship not found - install it first (winget install Starship.Starship)" "SKIP"
+    }
+
+    # Configure Windows Terminal with Nerd Font
+    $wtSettings = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+    if ((Test-Path $wtSettings) -and -not $DryRun) {
+        $wt = Get-Content $wtSettings -Raw | ConvertFrom-Json
+        if (-not $wt.profiles.defaults.font) {
+            $wt.profiles.defaults | Add-Member -NotePropertyName "font" -NotePropertyValue @{face="JetBrainsMono Nerd Font"; size=13} -Force
+            $wt.profiles.defaults | Add-Member -NotePropertyName "opacity" -NotePropertyValue 92 -Force
+            $wt.profiles.defaults | Add-Member -NotePropertyName "useAcrylic" -NotePropertyValue $true -Force
+            $wt.profiles.defaults | Add-Member -NotePropertyName "padding" -NotePropertyValue "12" -Force
+            $wt | ConvertTo-Json -Depth 10 | Out-File $wtSettings -Encoding UTF8
+            Write-Log "Windows Terminal: JetBrains Mono NF, acrylic, padding configured"
+        } else {
+            Write-Log "Windows Terminal font already configured" "SKIP"
+        }
+    }
+
+    # TranslucentTB config
+    $ttbConfig = "$env:LOCALAPPDATA\Packages\28017CharlesMilette.TranslucentTB_v826wp6bftszj\RoamingState\settings.json"
+    if (-not (Test-Path $ttbConfig) -and -not $DryRun) {
+        $ttbDir = Split-Path $ttbConfig
+        if (-not (Test-Path $ttbDir)) { New-Item -ItemType Directory -Path $ttbDir -Force | Out-Null }
+        @'
+{
+  "$schema": "https://TranslucentTB.github.io/settings.schema.json",
+  "desktop_appearance": {
+    "accent": "clear",
+    "color": "#00000000",
+    "show_peek": false,
+    "show_line": false
+  },
+  "visible_window_appearance": {
+    "enabled": true,
+    "accent": "acrylic",
+    "color": "#20000000",
+    "show_peek": false,
+    "show_line": false,
+    "blur_radius": 20.0
+  },
+  "maximized_window_appearance": {
+    "enabled": true,
+    "accent": "acrylic",
+    "color": "#80000000",
+    "show_peek": false,
+    "show_line": false,
+    "blur_radius": 20.0
+  },
+  "start_opened_appearance": {
+    "enabled": true,
+    "accent": "acrylic",
+    "color": "#60000000",
+    "show_peek": false,
+    "show_line": false,
+    "blur_radius": 20.0
+  }
+}
+'@ | Out-File -FilePath $ttbConfig -Encoding UTF8
+        Write-Log "TranslucentTB configured (transparent desktop, acrylic on windows)"
+    }
+
+    # Taskbar left-aligned
+    Set-RegistryValue -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "TaskbarAl" -Value 0
+    Write-Log "Taskbar alignment set to left"
+
+    $Script:TweaksApplied++
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MODULE: WSL2 OPTIMIZATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1177,7 +1428,9 @@ $modules = @(
     @{Name="input";     Fn={Invoke-InputOptimization}},
     @{Name="misc";      Fn={Invoke-MiscOptimization}},
     @{Name="tasks";     Fn={Invoke-TaskCleanup}},
-    @{Name="wsl";       Fn={Invoke-WSLOptimization}}
+    @{Name="wsl";       Fn={Invoke-WSLOptimization}},
+    @{Name="tools";     Fn={Invoke-ToolsInstall}},
+    @{Name="terminal";  Fn={Invoke-TerminalOptimization}}
 )
 
 foreach ($mod in $modules) {
